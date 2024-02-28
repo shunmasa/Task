@@ -1,0 +1,85 @@
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 0;
+}
+
+.inline {
+    display: inline;
+}
+
+h1 {
+    background-color: #333;
+    color: white;
+    padding: 10px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    background-color: white;
+    padding: 10px;
+    margin-bottom: 5px;
+}
+
+form {
+    padding: 10px;
+    background-color: #f0f0f0;
+}
+
+input[type="text"] {
+    padding: 5px;
+    width: 200px;
+}
+
+input[type="submit"] {
+    padding: 5px 10px;
+    background-color: #333;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+
+.calendar {
+    max-width: 400px;
+}
+.month {
+    text-align: center;
+    margin: 20px 0;
+}
+.month .month-name {
+    font-size: 24px;
+    font-weight: bold;
+}
+.weekdays {
+    display: flex;
+    background: #eee;
+}
+.weekdays .day, .days .date {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+}
+.days {
+    display: flex;
+    flex-wrap: wrap;
+}
+.days .date {
+    border: 1px solid #ddd;
+    min-height: 50px;
+}
+.input-box {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box;
+}
