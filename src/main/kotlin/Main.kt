@@ -1,4 +1,5 @@
 
+
 package org.example
 import io.ktor.application.*
 import io.ktor.html.*
@@ -21,17 +22,31 @@ import java.time.Duration
 
 class Todo(
     val id: UUID = UUID.randomUUID(),
-    val taskTitle: String,
-    val taskDetail: String,
-    val date: LocalDate,
-    val time: LocalTime,
-    val dueDateTimeMessage: String
+    var taskTitle: String,
+    var taskDetail: String,
+    var date: LocalDate,
+    var time: LocalTime,
+    var dueDateTimeMessage: String
 )
 
-fun main() {
-    val todos = mutableListOf<Todo>()
-    loadTodos(todos)
 
+//// this not woeking call.receiveParameters()["date"],call.receiveParameters()["time"]
+////                val parameters = call.receiveParameters()
+////                println(" parameters: $parameters")
+//
+//
+////                val date = call.receiveParameters()["date"]
+////                println("date: $date")
+////                val time = call.receiveParameters()["time"]
+////                println("time: $time")
+//
+//
+////                val todoText = call.receiveParameters()["todo"]
+////                println("todoText: $todoText")
+
+val todos = mutableListOf<Todo>()
+fun main() {
+    val todos = loadTodos()
     val server = embeddedServer(Netty, port = 8080) {
         routing {
             static("/styles") {
@@ -39,24 +54,11 @@ fun main() {
             }
 
             get("/") {
+                val todos = loadTodos()
                 call.respondText(renderTodoList(todos), ContentType.Text.Html)
             }
             post("/add") {
                 println("Received POST request to /add")
-
-// this not woeking call.receiveParameters()["date"],call.receiveParameters()["time"]
-//                val parameters = call.receiveParameters()
-//                println(" parameters: $parameters")
-
-
-//                val date = call.receiveParameters()["date"]
-//                println("date: $date")
-//                val time = call.receiveParameters()["time"]
-//                println("time: $time")
-
-
-//                val todoText = call.receiveParameters()["todo"]
-//                println("todoText: $todoText")
 
                 val parameters = call.receiveParameters()
                 val date = parameters["date"]
@@ -68,8 +70,6 @@ fun main() {
                     call.respondRedirect("/")
                     return@post
                 }
-
-
 
                 // Validate that date and time are not null
                 if (date != null && time != null) {
@@ -119,6 +119,34 @@ fun main() {
                     }
                 }
             }
+
+            post("/update") {
+                val parameters = call.receiveParameters()
+                val idString = parameters["id"]
+                val taskTitle = parameters["taskTitle"]
+                val taskDetail = parameters["taskDetail"]
+                val date =  parameters["date"]
+                val time =  parameters["time"]
+                if (idString != null && taskTitle != null && taskDetail != null && date != null && time != null) {
+                    val id = UUID.fromString(idString)
+                    val todo = todos.find { it.id == id }
+                    if (todo != null) {
+                        todo.taskTitle = taskTitle
+                        todo.taskDetail = taskDetail
+                        todo.date = LocalDate.parse(date)
+                        todo.time = LocalTime.parse(time)
+                        val dueDateTime = LocalDateTime.of(todo.date, todo.time)
+                        val currentDateTime = LocalDateTime.now()
+                        val difference = Duration.between(currentDateTime, dueDateTime)
+                        val days = difference.toDays()
+                        val hours = difference.toHours() % 24
+                        val minutes = difference.toMinutes() % 60
+                        todo.dueDateTimeMessage = "Due date is $days days, $hours hours, and $minutes minutes from now"
+                        saveTodos(todos)
+                    }
+                }
+                call.respondRedirect("/")
+            }
             post("/remove") {
                 val idString = call.receiveParameters()["id"]
                 if (idString != null) {
@@ -129,10 +157,8 @@ fun main() {
                 call.respondRedirect("/")
             }
 
-
             get("/search") {
                 val query = call.request.queryParameters["query"]
-//                val relatedNames = todos.filter { it.taskTitle.contains(query ?: "", ignoreCase = true) }.take(10)
                 val relatedNames = todos.filter {
                     (it.taskTitle + " " + it.taskDetail).contains(query ?: "", ignoreCase = true)
                 }.take(10)
@@ -159,6 +185,11 @@ fun main() {
                     }
                 }
             }
+
+            get("/todos") {
+                val todos = loadTodos()
+                call.respondText(renderTodoListFragment(todos), ContentType.Text.Html)
+            }
         }
     }
 
@@ -171,31 +202,40 @@ fun renderTodoList(todos: MutableList<Todo>): String {
             head {
                 title("To-Do List with Calendar")
                 link(rel = "stylesheet", href = "/styles/styles.css")
+                script(src = "https://unpkg.com/htmx.org") {} // Make sure HTMX is included
             }
             body {
                 h1 { +"To-Do List" }
                 renderAddTodoForm()
                 renderSearchComponent()
-                ul {
-                    todos.forEach { todo ->
-                        li {
-                            +"${todo.taskTitle} - ${todo.taskDetail} - ${todo.dueDateTimeMessage}"
-                            form(action = "/remove", method = FormMethod.post, classes = "inline") {
-                                input(type = InputType.hidden, name = "id") {
-                                    value = todo.id.toString()
-                                }
-                                input(type = InputType.submit) {
-                                    value = "Remove"
-                                }
-                            }
-                        }
-                    }
+
+                // HTMX call to load todos asynchronously
+                div {
+                    attributes["hx-get"] = "/todos"
+                    attributes["hx-trigger"] = "load"
+                    attributes["hx-target"] = "#todo-list"
+                    id = "todo-list"
                 }
+
             }
         }
     }
 }
 
+fun renderTodoListFragment(todos: MutableList<Todo>): String = buildString {
+    appendHTML().ul {
+        todos.forEach { todo ->
+            li {
+                +"${todo.taskTitle} - ${todo.taskDetail} - ${todo.dueDateTimeMessage}"
+                form(action = "/remove", method = FormMethod.post, classes = "inline") {
+                    input(type = InputType.hidden, name = "id") { value = todo.id.toString() }
+                    input(type = InputType.submit) { value = "Remove" }
+                }
+                updateTodo(todo)
+            }
+        }
+    }
+}
 fun FlowContent.renderAddTodoForm() {
     println("Rendering Add Todo Form")
     form(action = "/add", method = FormMethod.post) {
@@ -209,7 +249,7 @@ fun FlowContent.renderAddTodoForm() {
         }
         input(type = InputType.date, name = "date") {
             val date = LocalDate.now().toString()
-             println("Date: $date")
+            println("Date: $date")
             value = date
         }
         input(type = InputType.time, name = "time") {
@@ -223,6 +263,30 @@ fun FlowContent.renderAddTodoForm() {
         }
     }
 }
+
+fun FlowContent.updateTodo(todo: Todo) {
+    form(action = "/update", method = FormMethod.post, classes = "inline") {
+        input(type = InputType.hidden, name = "id") {
+            value = todo.id.toString()
+        }
+        input(type = InputType.text, name = "taskTitle") {
+            value = todo.taskTitle
+        }
+        input(type = InputType.text, name = "taskDetail") {
+            value = todo.taskDetail
+        }
+        input(type = InputType.date, name = "date") {
+            value = todo.date.toString()
+        }
+        input(type = InputType.time, name = "time") {
+            value = todo.time.toString()
+        }
+        input(type = InputType.submit) {
+            value = "Update"
+        }
+    }
+}
+
 
 fun textarea(name: String, function: () -> Unit) {
 
@@ -248,40 +312,46 @@ fun saveTodos(todos: MutableList<Todo>) {
         println(todos)
         println("Saving to: ${File(path).absolutePath}") // Debug print
         File(path).writeText(todos.joinToString("\n") {
-            "${it.id},${it.taskTitle},${it.date},${it.time}"
+            "${it.id}|${it.taskTitle}|${it.taskDetail}|${it.date}|${it.time}|${it.dueDateTimeMessage}"
         })
     } catch (e: Exception) {
         println("Error saving todos: ${e.message}")
     }
 }
 
-fun loadTodos(todos: MutableList<Todo>) {
+fun loadTodos(): MutableList<Todo> {
+    val todos = mutableListOf<Todo>()
     val path = "todos.txt"
     try {
-        println("Loading from: ${File(path).absolutePath}") // Debug print
-        println(todos)
+        println("Loading from: ${File(path).absolutePath}") // Debugging information
         if (File(path).exists()) {
-            File(path).readLines().forEach {
-                val parts = it.split(",")
-                if (parts.size >= 3) {
-                    val todo = Todo(
-                        id = UUID.fromString(parts[0]),
-                        taskTitle = parts[1],
-                        taskDetail = parts[2],
-                        date = LocalDate.parse(parts[3]),
-                        time = LocalTime.parse(parts[4]),
-                        dueDateTimeMessage = parts[5],
-
-                    )
-                    todos.add(todo)
+            todos.addAll(File(path).readLines().mapNotNull { line ->
+                val parts = line.split("|")
+                println("parts:,${parts}")
+                if (parts.size == 6) { // Ensure there are exactly 6 parts expected
+                    try {
+                        Todo(
+                            id = UUID.fromString(parts[0]),
+                            taskTitle = parts[1],
+                            taskDetail = parts[2],
+                            date = LocalDate.parse(parts[3]), // Assuming ISO-8601 format
+                            time = LocalTime.parse(parts[4]), // Assuming ISO-8601 format
+                            dueDateTimeMessage = parts[5]
+                        )
+                    } catch (e: Exception) {
+                        println("Error parsing todo item: $line, due to ${e.message}")
+                        null
+                    }
                 } else {
-                    println("Invalid line in todos.txt: $it")
+                    println("Invalid line in todos.txt: $line")
+                    null
                 }
-            }
+            })
         }
     } catch (e: Exception) {
         println("Error loading todos: ${e.message}")
     }
+    return todos
 }
 
 
